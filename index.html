@@ -1,0 +1,262 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>漫画阅读</title>
+</head>
+
+<style>
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+</style>
+
+<body>
+  <div id="ComicsList">
+    <div id="ComicsList_Header">漫画列表</div>
+    <div id="ComicsList_List"></div>
+  </div>
+  <hr>
+  <div id="NewComic">
+    <div id="NewComic_Header">添加新漫画</div>
+    <form id="NewComic_Content" onsubmit="event.preventDefault(); NewComic();">
+      路径：
+      <input id="NewComic_Path" placeholder="D:\" />
+      <button type="submit" id="NewComic_Action">确认添加</button>
+    </form>
+  </div>
+
+  <!-- 漫画对象 -->
+  <script>
+    // 漫画对象
+    const fs = require("fs");
+    const nodePath = require("path");
+    const md5 = require("md5");
+
+    /**
+     * 获取路径文件夹名
+     * @param {String} path 路径
+     * @returns 文件夹名
+     */
+    function getDirName(path) {
+      let arr = path.split("\\");
+      let result = arr.pop();
+      while (arr && !result) {
+        result = arr.pop();
+      }
+      return result;
+    }
+
+    /**
+     * 获取文件夹下所有图片文件数组
+     * @param {String} path 路径
+     * @returns 图片文件数组
+     */
+    function getAllImage(path) {
+      let result = [];
+      const stats = fs.statSync(path);
+      const imgReg = checkFileName(["jpg", "png", "gif", "jpeg"]);
+      if (stats.isDirectory()) {
+        let files = fs.readdirSync(path);
+        files.forEach((v) => {
+          const nowPath = nodePath.join(path, v);
+          const st = fs.statSync(nowPath);
+          if (st.isFile() && imgReg.test(v)) {
+            result.push(v);
+          }
+        });
+      }
+      return result.sort((a, b) => a.localeCompare(b, "zh-Hans-CN", { numeric: true }));
+    }
+
+    /**
+     * 生成检验后缀名正则对象
+     * @param {String[]} arr 后缀名数组
+     * @returns 正则对象
+     */
+    function checkFileName(arr) {
+      arr = arr.map((name) => `.${name}`).join("|");
+      return new RegExp(`(${arr})$`);
+    }
+
+    class ComicFileData {
+      /**
+       * 传入绝对路径获取漫画数据列表
+       * @param {String} path 绝对路径
+       */
+      constructor(path) {
+        if (!path) {
+          throw new Error("构造漫画数据参数错误！");
+        }
+        this.dirName = getDirName(path);
+        this.imgs = getAllImage(path);
+        this.path = path;
+        this.md5 = md5(path);
+      }
+    }
+
+  </script>
+
+  <!-- 模板 -->
+  <script>
+    const ejsHTML = `<!DOCTYPE html>
+<html lang="zh-cn">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>
+    <%= dirName %>
+  </title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .comic_div {
+      max-width: 100%;
+      margin: 0 auto;
+      font-size: 0;
+      line-height: 0;
+    }
+
+    .comic_div img {
+      width: 100%;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -o-crisp-edges;
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+      -ms-interpolation-mode: nearest-neighbor;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>
+    <%= dirName %>
+  </h2>
+  <div class="comic_div">
+    <% imgs.forEach(item=>{ %>
+      <img src="<%= md5 + '/' + item %>" alt="<%= item %>">
+      <%})%>
+  </div>
+</body>
+
+</html>
+    `;
+  </script>
+
+  <!-- 主执行逻辑 -->
+  <script>
+    const { shell } = require('electron');
+    const Koa = require("koa");
+    const Router = require("@koa/router");
+    const serve = require("koa-static");
+    const mount = require("koa-mount");
+    const ejs = require("ejs");
+    const port = 3000;
+    const comicDataArr = [];
+
+    // DOM elements
+    const comicsList = document.querySelector("#ComicsList_List");
+    const bodyDom = document.querySelector("body");
+    const NewComicPath = document.querySelector("#NewComic_Path");
+
+    const app = new Koa();
+
+    InitComicsList()
+
+    // 初始化
+    function InitComicsList() {
+      comicsList.innerHTML = `当前无漫画`;
+      InitDragAction();
+      app.listen(port, () => {
+        const url = `http://localhost:${port}/`;
+        // 这里仅针对 win 平台
+        console.log(`服务启动，url：`, url);
+      });
+    }
+    // 监听拖动文件夹
+    function InitDragAction() {
+      bodyDom.ondragover = function () {
+        return false;
+      };
+      // 拖动完改变输入
+      bodyDom.ondrop = function (e) {
+        e.preventDefault();
+        var file = e.dataTransfer.files[0];
+        var path = e.dataTransfer.files[0].path;
+        NewComicPath.value = path;
+      };
+    }
+    // 创建服务
+    function NewComic() {
+      let path = NewComicPath.value.trim();
+
+      // 无路径
+      if (!path.length) {
+        return;
+      }
+
+      // 不存在此路径
+      if (!fs.existsSync(path)) {
+        console.log("路径不存在");
+        return;
+      }
+
+      // 当路径存在时，获取对应图片文件对象
+      let comicFileData = new ComicFileData(path);
+
+      if (comicDataArr.some((v) => {
+        return v.md5 == comicFileData.md5;
+      })) {
+        return;
+      }
+
+      console.log(comicFileData);
+
+      /** 将对应文件挂载 **/
+      // 1. 设置路由前缀
+      let router = new Router({
+        prefix: "/" + comicFileData.md5,
+      });
+      // 2. 图片对应设置路由前缀
+      app.use(mount("/" + comicFileData.md5, serve(path)));
+      // 3. 访问此前缀设置模板
+      router.all("/", async (ctx) => {
+        ctx.body = await ejs.render(
+          ejsHTML,
+          comicFileData
+        );
+      });
+      // 启动路由
+      app.use(router.routes());
+
+      /** 更改 html ，添加按钮 **/
+      // 1. 更新数据
+      comicDataArr.push(comicFileData);
+      // 更新页面
+      let newHTML = '';
+      comicDataArr.forEach((v) => {
+        newHTML = newHTML + `<button title="打开路径" onclick="OpenURL('${v.md5}');" class="open_btn">${v.path}</button><br>`;
+      })
+      comicsList.innerHTML = newHTML;
+    }
+    // 点击事件（打开网址）
+    function OpenURL(md5) {
+      shell.openExternal(`http://localhost:${port}/${md5}`);
+    }
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "@koa/router": "^12.0.0",
+    "ejs": "^3.1.8",
+    "koa": "^2.14.1",
+    "koa-mount": "^4.0.0",
+    "koa-static": "^5.0.0",
+    "md5": "^2.3.0"
+  },
+  "devDependencies": {
+    "electron": "^22.1.0",
+    "electron-packager": "^17.1.1"
+  },
+  "name": "comics-read2",
+  "version": "1.0.0",
+  "author": "JamesTao",
+  "main": "index.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-packager . Man --platform=win32 --arch=x64 --out=./out --asar --app-version=0.0.1 --overwrite"
+  }
+}
